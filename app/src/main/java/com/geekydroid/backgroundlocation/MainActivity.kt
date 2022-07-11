@@ -15,6 +15,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import com.geekydroid.backgroundlocation.databinding.ActivityMainBinding
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.location.*
 
 private const val TAG = "MainActivity"
@@ -39,13 +40,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val locationCallback = object : LocationCallback(){
+    private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
-            locationResult?:return
-            for (location in locationResult.locations)
-            {
-                val text = "Lat "+location.latitude+" Long "+location.longitude+" accuracy "+location.accuracy
+            for (location in locationResult.locations) {
+                val text =
+                    "Lat " + location.latitude + " Long " + location.longitude + " accuracy " + location.accuracy + " provider " + location.provider
+                Log.d(TAG, "onLocationResult: Lat ${location.latitude} Long ${location.longitude}")
                 updateUi(text)
+                if (SDK_INT >= Build.VERSION_CODES.S)
+                {
+                    Log.d(TAG, "onLocationResult: isMock ${location.isMock}")
+                }
             }
         }
     }
@@ -102,24 +107,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startLocationUpdates() {
-
-        val locationRequest = LocationRequest.create()?.apply {
+        val locationRequest = LocationRequest.create().apply {
             interval = 10000
             fastestInterval = 5000
-            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+            priority = Priority.PRIORITY_HIGH_ACCURACY
         }
         val fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
+
+        val builder = LocationSettingsRequest.Builder()
+        builder.addLocationRequest(locationRequest)
+        val result = LocationServices.getSettingsClient(this).checkLocationSettings(builder.build())
+        result.addOnCompleteListener {
+            try {
+                if (ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    fusedLocationClient.requestLocationUpdates(
+                        locationRequest,
+                        locationCallback,
+                        Looper.getMainLooper()
+                    )
+                }
+            } catch (exception: ApiException) {
+                Log.d(TAG, "startLocationUpdates: ${exception.localizedMessage}")
+            }
         }
-        fusedLocationClient.requestLocationUpdates(locationRequest,locationCallback, Looper.getMainLooper())
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
